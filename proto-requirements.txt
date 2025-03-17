@@ -1,0 +1,8 @@
+kaggle
+kagglehub
+opencv-python>=4.7.0
+numpy>=1.23
+insightface>=0.7.2
+onnxruntime
+pandas
+tqdm

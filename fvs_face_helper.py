@@ -27,6 +27,9 @@ def configure(host="localhost", port=7760, alloc="fvs-automation"):
     api_config.default_headers["allocationToken"] = alloc
     return api_config
 
+def face_build(dataset_path, verbose=False):
+    raise Exception("Not yet implemented")
+
 def face_search(dataset_id, query, topk, verbose=False):
     if type(query)==type(""):
         pass # we expect this to be a path

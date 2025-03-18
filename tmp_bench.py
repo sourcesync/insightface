@@ -13,7 +13,7 @@ import traceback
 # constants and globals
 
 # search phase length (seconds)
-SEARCH_TOTAL = 100
+#SEARCH_TOTAL = 100
 
 # global verbosity level
 VERBOSE = False
@@ -30,6 +30,8 @@ datadir = "/home/public/fvs_benchmark_datasets"
 #
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument("-d", "--dataset", default="deep-1M")
+parser.add_argument("-i", "--dataset_id")
+parser.add_argument("-y", "--search_elapsed",type=int, default=100)
 parser.add_argument("-q", "--query-path", default="deep-queries-")
 parser.add_argument("-n", "--nbits", type=int, default=768)
 parser.add_argument("-s", "--search-type", default="clusters")
@@ -40,7 +42,7 @@ parser.add_argument("-b", "--num-of-boards", type=int)
 parser.add_argument("-k", "--topk", type=int, default=10)
 parser.add_argument("-v", "--verbose", default=False, action="store_true")
 parser.add_argument("-e", "--output", required=False)
-parser.add_argument("-a", "--batch-size", required=False)
+parser.add_argument("-a", "--batch-size", required=False, default="1")
 parser.add_argument("-z", "--dont_cleanup_data", required=False, action="store_true")
 args = parser.parse_args()
 
@@ -89,7 +91,9 @@ if args.centroids_hamming_k:
 #
 # create allocation
 #
-if args.num_of_boards:
+if args.dataset_id:
+    print("%s: Bypassing allocation creation" % sys.argv[0])
+elif args.num_of_boards:
     print("%s: Creating allocation..." % sys.argv[0])
     ret = create_allocation(args.num_of_boards, "fvs-automation")
     if not ret:
@@ -127,18 +131,23 @@ responses = [] # collects raw search query results
 #
 # FVS UPLOAD
 #
-print("%s: Starting FVS Upload..." % sys.argv[0])
-api_config = configure() #leaving empty for default params
-cleanup(api_config)
-vprint(f"starting upload, {config_name}")
-ts = datetime.datetime.now()
-dataset_id = upload(
-    api_config, data_path, config_name,
-    nbits=args.nbits, searchType=args.search_type, top=args.topk,
-    centroids_hamming_k=args.centroids_hamming_k, hamming_k=args.hamming_k, centroids_rerank=args.centroids_rerank,
-    num_of_boards=args.num_of_boards, verbose=VERBOSE
-)
-del api_config
+if args.dataset_id:
+    print("%s: Bypassing fvs upload, using dataset_id=" % sys.argv[0], args.dataset_id)
+    dataset_id = args.dataset_id
+else:
+    print("%s: Starting FVS Upload..." % sys.argv[0])
+    api_config = configure() #leaving empty for default params
+    cleanup(api_config)
+    vprint(f"starting upload, {config_name}")
+    ts = datetime.datetime.now()
+    dataset_id = upload(
+        api_config, data_path, config_name,
+        nbits=args.nbits, searchType=args.search_type, top=args.topk,
+        centroids_hamming_k=args.centroids_hamming_k, hamming_k=args.hamming_k, centroids_rerank=args.centroids_rerank,
+        num_of_boards=args.num_of_boards, verbose=VERBOSE
+    )
+    print("%s: Got Dataset_id=" % sys.argv[0], dataset_id)
+    del api_config
 
 #
 # FVS SEARCH
@@ -151,8 +160,11 @@ t_start, iters  = datetime.datetime.now(), 0
 api_config = configure() #leaving empty for default paramss
 # pre-compute the query path (this might get overridden in 'modulo' mode in the loop below)
 search_query_path = os.path.join( datadir, args.query_path + "%d.npy" % batch_size ) 
-if q_modulo<0:  vprint("using search query path=", search_query_path)
-while ((datetime.datetime.now() - t_start).total_seconds() < SEARCH_TOTAL):
+if q_modulo<0:  
+    vprint("using search query path=", search_query_path)
+    a = np.load(search_query_path)
+    vprint("search query np info", a.dtype, a.shape)
+while ( args.search_elapsed<0 ) or ((datetime.datetime.now() - t_start).total_seconds() < args.search_elapsed) :
     # lets keep the compute and file I/O to a minimum within this loop
     if q_modulo>=0:
         # the final query path final may depend on a modulo operation decided during parse args
@@ -165,6 +177,9 @@ while ((datetime.datetime.now() - t_start).total_seconds() < SEARCH_TOTAL):
     results.append(response)
     timings.append( (s_end-s_start).total_seconds() ) 
     iters += 1
+    if args.search_elapsed<0:
+        vprint("only doing 1 search")
+        break
 t_end = datetime.datetime.now()
 vprint("iterations completed:", iters)
 vprint("done searching")
@@ -176,13 +191,21 @@ if not args.output: # compute accuracy now
     gt_path = f"{data_path[:-4]}-gt-{batch_size}.npy"
     if not os.path.exists(gt_path): raise Exception("Could not file path %s" % gt_path)
     gt = np.load(gt_path)
+    print("gt", type(gt), gt.shape, gt)
     accuracy = []
-    for inds in results:
+    print("GW res", type(results), len(results))
+    for idx, result in enumerate(results):
+        print(type(result),dir(result))
+        inds = result.indices
+        print("GW", inds)
         for i in range(len(inds)):
-            accuracy.append(len(np.intersect1d(inds.indices[i], gt[i][:args.topk])) / args.topk)
+            accuracy.append(len(np.intersect1d(inds[i], gt[i][:args.topk])) / args.topk)
+    vprint("accuracies=", accuracy)
     vprint(f"\nACCURACY: {sum(accuracy) / len(accuracy)}\n")
 
 if not args.output:# export the search results now
+    outfile = open("/tmp/fvs_last_output.json","w")
+    file_data = {}
     file_data["experiment_date"] = exp_date = str(datetime.datetime.now())
     file_data["accuracy"] = sum(accuracy) / len(accuracy)
     file_data["topk"] = args.topk

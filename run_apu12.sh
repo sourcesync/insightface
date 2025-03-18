@@ -39,6 +39,10 @@ EXPORT_DATA_PATH="/mnt/nas2/benchmarks/fvs/0.9.5.4/exports"
 # verbosity level for debugging
 VERBOSE=1
 
+# specify dataset_id (will bypass training)
+DATASET_ID="bfc7d15a-996e-4146-9f7d-ede1c530fb9a"
+
+
 #
 # I don't recommend using the config vars below unless you know what you are doing.
 # They are useful for troubleshooting the python script...

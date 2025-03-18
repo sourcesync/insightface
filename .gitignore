@@ -1,5 +1,6 @@
 # sourcesync proto
 data/
+.ipmi_secrets
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

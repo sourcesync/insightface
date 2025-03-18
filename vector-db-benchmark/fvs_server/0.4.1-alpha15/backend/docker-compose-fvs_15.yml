@@ -1,0 +1,169 @@
+  version: '3.4'
+  x-logging:
+    logging: &rotate_logging
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "10m"
+  x-common-env:
+    environment: &common_env
+      FLOAT_API_HOST: python-float32-neural
+  x-server-volumes:
+    volumes: &server_volumes
+      type: bind
+      source: ${ROOT_SHARED:-/home/public/elastic-similarity/data}
+      target: ${ROOT_SHARED:-/home/public/elastic-similarity/data}
+  services:
+   fvs-zookeeper:
+     profiles: ["localtrain"]
+     image: confluentinc/cp-zookeeper:6.0.1
+     container_name: fvs-zookeeper
+     ports:
+      - 2182:2182
+      - 22888:2888
+      - 23888:3888
+     environment:
+      - ZOOKEEPER_CLIENT_PORT=2182
+      - ZOOKEEPER_TICK_TIME=2000
+     volumes:
+      - /home/public/elastic-similarity/fvs-zookeeper:/var/lib/zookeeper
+     logging:
+       <<: *rotate_logging
+     restart: unless-stopped
+     networks:
+       - elastic-similarity
+   fvs-kafka:
+    profiles: ["localtrain"]
+    container_name: fvs-kafka
+    image: confluentinc/cp-kafka:6.0.1
+    ports:
+     - 29094:29094
+     - 29093:29093
+    volumes:
+     - /home/public/elastic-similarity/fvs-kafka:/var/lib/kafka
+    environment:
+     - KAFKA_BROKER_ID=1
+     - KAFKA_ZOOKEEPER_CONNECT=fvs-zookeeper:2182
+     - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://fvs-kafka:29093,PLAINTEXT_HOST://${HOSTNAME}:29094
+     - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+     - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+     - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    logging:
+      <<: *rotate_logging
+    restart: unless-stopped
+    networks:
+     - elastic-similarity
+   fvs-redis:
+     container_name: fvs-redis
+     command: redis-server --requirepass gsi4ever
+     volumes:
+       - /home/public/elastic-similarity/fvs-redis-data:/data
+     ports:
+       - 36379:6379
+     tty: true
+     networks:
+       - elastic-similarity
+     image: redis
+     logging:
+       <<: *rotate_logging 
+     restart: unless-stopped
+   python-float32-neural:
+    container_name: python-float32-neural
+    depends_on:
+      - fvs-redis
+    environment:
+      - SERVER_PORT=7760
+      - FVS_WORKSPACE=/home/public/elastic-similarity/float32_neural/
+      - KAFKA_HOSTNAME=${FLOAT32_KAFKA_HOSTNAME:-localhost}
+      - KAFKA_PORT=${FLOAT32_KAFKA_PORT:-29094}
+      - REDIS_HOSTNAME=${HOSTNAME}
+      - REDIS_PORT=36379
+      - SERVER_MODE=${SERVER_TYPE:-ON_PREM}
+      - TCP_PORT=65432
+      - LOGGING_LEVEL=DEBUG
+      - REDIS_PASSWORD=gsi4ever
+    volumes:
+      - /home/public/elastic-similarity/float32_neural:/home/public/elastic-similarity/float32_neural
+      - ${ROOT_SHARED:-/home/public/elastic-similarity/data}:${ROOT_SHARED:-/home/public/elastic-similarity/data}
+      - /home/public/elastic-similarity/python-training-manager-api:/home/public/elastic-similarity/python-training-manager-api
+      - /efs:/efs
+      - /sys/kernel/config:/sys/kernel/config
+      - /dev:/dev
+      - ${USER_DIR}/.aws/:/efs/aws
+      - /home/public:/home/public
+      - /home/ftpuser:/home/ftpuser
+      - /var/lib/weaviate:/var/lib/weaviate
+      - /mnt/nas1:/mnt/nas1  
+    ports:
+      - 7760:7760
+      - 7761:7760
+      - 18096:65432
+      - 65432:65432
+      - 65431:65431
+    expose:
+      - 7760
+      - 18096
+      - 65432
+      - 65431
+    tty: true
+    privileged: true
+    restart: unless-stopped
+    networks:
+      - elastic-similarity
+    image: 186285203186.dkr.ecr.us-west-1.amazonaws.com/com/gsi/apu/float32-api/server:0.9.5.4
+    logging:
+      <<: *rotate_logging
+   python-training-manager:
+    profiles: ["localtrain"]
+    container_name: python-training-manager
+    environment:
+     - SERVER_HOSTNAME=${HOSTNAME}
+     - SERVER_PORT=7762
+     - TRAINING_MANAGER_WORKSPACE=${TM_WORKSPACE:-/home/public/elastic-similarity/python-training-manager-api/}
+     - TRAINING_MANAGER_OUTPUT_DIR=${TM_WORKSPACE_OUTPUT:-/home/public/elastic-similarity/python-training-manager-api/cache/}
+     - KAFKA_HOSTNAME=${HOSTNAME}
+     - KAFKA_PORT=29094
+     - SERVER_TYPE=${SERVER_TYPE:-CLOUD}
+     - DB_SERVER=python-training-manager-postgres
+     - POSTGRES_USER=${FVS_TRAIN_POSTGRES_USER:-postgres}
+     - POSTGRES_PASSWORD=${FVS_TRAIN_POSTGRES_PASSWORD:-password}
+     - POSTGRES_PORT=${FVS_TRAIN_POSTGRES_PORT:-54032}
+    volumes:
+     - ${ROOT_SHARED:-/home/public/elastic-similarity/}:${ROOT_SHARED:-/home/public/elastic-similarity/}
+     - /home/public:/home/public
+     - /var/lib/weaviate:/var/lib/weaviate
+     - /mnt/nas1:/mnt/nas1
+    ports:
+     - 7762:7762
+    depends_on:
+     - python-training-manager-postgres
+    expose:
+     - 7762
+    tty: true
+    privileged: true
+    restart: unless-stopped
+    networks:
+     - elastic-similarity
+    runtime: nvidia
+    image: 186285203186.dkr.ecr.us-west-1.amazonaws.com/com/gsi/apu/train-manager/server:0.9.4.2
+   python-training-manager-postgres:
+    profiles: ["localtrain"]
+    image: postgres:13.0-alpine
+    container_name: python-training-manager-postgres
+    hostname: python-training-manager-postgres
+    environment:
+     - POSTGRES_DB=caching_db
+     - POSTGRES_USER=${FVS_TRAIN_POSTGRES_USER:-postgres}
+     - POSTGRES_PASSWORD=${FVS_TRAIN_POSTGRES_PASSWORD:-password}
+     - PGPORT=${FVS_TRAIN_POSTGRES_PORT:-54032}
+    ports:
+     - ${FVS_TRAIN_POSTGRES_PORT:-54032}:54032
+    volumes:
+     - /home/public/elastic-similarity/fvs-postgresql:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+     - elastic-similarity
+  
+  networks:
+      elastic-similarity:
+        name: elastic-similarity

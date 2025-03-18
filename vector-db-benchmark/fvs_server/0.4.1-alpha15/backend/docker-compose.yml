@@ -1,0 +1,173 @@
+version: '3.4'
+x-logging:
+  logging: &rotate_logging
+    driver: "json-file"
+    options:
+      max-file: "10"
+      max-size: "10m"
+services:
+ cassandra:
+  container_name: cassandra
+  hostname: cassandra
+  environment:
+   - MAX_HEAP_SIZE=32G
+   - HEAP_NEWSIZE=3200M
+   - CASSANDRA_SEEDS=cassandra
+   - CASSANDRA_BROADCAST_ADDRESS=cassandra
+   - CASSANDRA_NATIVE_TRANSPORT_PORT=9042
+   - CASSANDRA_CLUSTER_NAME=gsi-cluster
+   - CASSANDRA_START_RPC=false
+   - CASSANDRA_DC=DC1
+   - CASSANDRA_RACK=RAC1
+   - CASSANDRA_NUM_TOKENS=256
+   - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+  ports:
+   - 9042:9042
+   - 7070:7070
+  expose:
+   - 9042
+   - 7000
+   - 7001
+   - 7199
+   - 9142
+   - 9160
+  ulimits:
+   memlock: -1
+   nproc: 32768
+   nofile: 100000
+  security_opt:
+   - seccomp:unconfined
+  restart: unless-stopped
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+  volumes:
+   - /home/public/elastic-similarity/cassandra:/var/lib/cassandra
+  logging:
+    <<: *rotate_logging
+ redis:
+  container_name: redis
+  privileged: true # for overcommit
+  command: redis-server
+  ports:
+   - 6379:6379
+  expose:
+   - 6379
+  volumes:
+   - ${REDIS_VOLUME:-/home/public/elastic-similarity/redis/volume}:/data
+  networks:
+   - elastic-similarity
+  image: redis:7.0.7-alpine
+  logging:
+    <<: *rotate_logging
+  restart: unless-stopped
+ dataset-converter:
+  container_name: dataset-converter
+  environment:
+   - SERVER_PORT=1111
+   - CASSANDRA_SPACE=vector
+   - CASSANDRA_HOSTS=cassandra
+   - CASSANDRA_PORT=9042
+   - CASSANDRA_FETCH_SIZE=10000
+   - BOOTSTRAP_SERVER=broker
+   - BOOTSTRAP_PORT=29092
+   - REDIS_HOSTNAME=redis
+  ports:
+   - 1111:1111
+  expose:
+   - 1111
+  volumes:
+   - /efs:/efs
+   - /home/public/elastic-similarity/data:/home/public/elastic-similarity/data
+   - ${ES_FTP_DIR}:${ES_FTP_DIR}
+  tty: true
+  networks:
+   - elastic-similarity
+  restart: unless-stopped
+  depends_on:
+   - cassandra
+   - broker
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/dataset-converter:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ postgresql:
+  container_name: postgresql
+  ports:
+    - 5432:5432
+  expose:
+    - 5432
+  environment:
+    - POSTGRES_USER=admin
+    - POSTGRES_PASSWORD=admin
+    - POSTGRES_MULTIPLE_DATABASES=settings_manager,dataset_manager,index_manager,job_manager
+    - LANG=en_US.UTF-8
+    - LC_CTYPE=en_US.UTF-8
+    - LC_ALL=en_US.UTF-8
+  volumes:
+    - ${POSTGRES_VOLUME:-/home/public/elastic-similarity/postgresql/volume}:/var/lib/postgresql/data
+  networks:
+   - elastic-similarity
+  restart: unless-stopped
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/postgresql:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ pgadmin4:
+  container_name: pgadmin4
+  environment:
+   - PGADMIN_DEFAULT_EMAIL=admin
+   - PGADMIN_DEFAULT_PASSWORD=admin
+  volumes:
+   - /home/public/elastic-similarity/pgadmin4:/var/lib/pgadmin
+  ports:
+   - 36673:80
+  networks:
+   - elastic-similarity
+  depends_on:
+    - postgresql
+  image: dpage/pgadmin4:4.22
+  restart: unless-stopped
+  logging:
+    <<: *rotate_logging
+ web-app:
+  container_name: web-app
+  environment:
+   - HOSTNAME=${HOSTNAME}
+   - NODE_SERVER_HOST=${HOSTNAME}
+   - NODE_SERVER_PORT=3080
+   - GATEWAY_HOST=${HOSTNAME}
+   - GATEWAY_PORT=8182
+   - DATASET_IMPORT_VECTORS_DIR=${ES_FTP_DIR}
+   - DATASET_IMPORT_IDS_DIR=${ES_FTP_DIR}
+   - RECURSIVE_FILE_DISPLAY=false
+   - LOGGER_LEVEL=info
+   - REDIS_PORT=6379
+   - REDIS_HOST=redis
+   - MAX_ALLOCATIONS=0
+   - PRODUCT_VERSION=${DOCKER_VERSION}
+   - FS_DIRPATH=${FS_UPLOAD_DIR:-/home/public/elastic-similarity/upload_store}
+  ports:
+   - 3080:3080
+  expose:
+   - 3080
+  volumes:
+    - ${ES_FTP_DIR}:${ES_FTP_DIR}
+  networks:
+   - elastic-similarity
+  restart: unless-stopped
+  profiles:
+   - backend
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/web/app:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+
+networks:
+  elastic-similarity:
+    name: elastic-similarity
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.48.0.0/16
+          gateway: 172.48.0.1
+  default:
+    name: elastic-similarity
+    external: true  

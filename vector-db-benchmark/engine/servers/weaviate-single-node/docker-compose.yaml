@@ -1,0 +1,40 @@
+version: '3.4'
+services:
+  weaviate:
+    command:
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8090'
+    - --scheme
+    - http
+    image: semitechnologies/weaviate:1.19.9
+    ports:
+    - "8090:8090"
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "1"
+# GW-changed
+#        max-size: "10m"
+        max-size: "100m"
+#
+    environment:
+      QUERY_DEFAULTS_LIMIT: "10"
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      ENABLE_MODULES: ''
+      CLUSTER_HOSTNAME: 'node1'
+# GW-added
+      DISK_USE_READONLY_PERCENTAGE: 95
+      DISK_USE_WARNING_PERCENTAGE: 90
+# GW-removed  GOMEMLIMIT: "25GiB"
+# GW-removed  GOGC: "50"
+    deploy:
+      resources:
+        limits:
+# GW-changed
+#          memory: "27Gb"
+          memory: "500Gb"
+# GW

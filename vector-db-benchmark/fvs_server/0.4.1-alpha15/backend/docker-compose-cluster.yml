@@ -1,0 +1,252 @@
+version: '3.4'
+x-logging:
+ logging: &rotate_logging
+  driver: "json-file"
+  options:
+   max-file: "10"
+   max-size: "10m"
+services:
+ time_out:
+   profiles: ["cassandra_cluster"]
+   container_name: time_out
+   command: /bin/bash -c "echo loading, timeout.. && sleep 4m"
+   image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+ dataset-converter:
+   profiles: ["cassandra_cluster"]
+   environment:
+    - CASSANDRA_HOSTS=cassandra,node3,node5
+    - CASSANDRA_PORT=9042,9044,9046
+   depends_on:
+    cassandra:
+       condition: service_started
+    node2:
+       condition: service_started
+    node3:
+       condition: service_started
+    time_out:
+       condition: service_completed_successfully
+ dataset-manager:
+   profiles: ["cassandra_cluster"]
+   environment:
+    - CASSANDRA_REPLICATION_FACTOR=3
+    - CASSANDRA_POINTS=cassandra,node3,node5
+    - CASSANDRA_PORT=9042,9044,9046
+   depends_on:
+    postgresql:
+      condition: service_started
+    broker:
+      condition: service_started
+    redis:
+      condition: service_started
+    settings-manager:
+      condition: service_started
+    python-float32-neural:
+      condition: service_started
+    dataset-converter:
+      condition: service_started
+    search:
+      condition: service_started
+    cassandra:
+      condition: service_started
+    time_out:
+      condition: service_completed_successfully
+ node2:
+  restart: always
+  container_name: cassandra_node2
+  hostname: node2
+  profiles: ["cassandra_cluster"]
+  environment:
+   - CASSANDRA_SEEDS=cassandra
+   - CASSANDRA_BROADCAST_ADDRESS=node2
+   - CASSANDRA_NATIVE_TRANSPORT_PORT=9043
+   - CASSANDRA_CLUSTER_NAME=gsi-cluster
+   - CASSANDRA_START_RPC=false
+   - CASSANDRA_DC=DC1
+   - CASSANDRA_RACK=RAC1
+   - CASSANDRA_NUM_TOKENS=256
+   - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+  ports:
+   - 9043:9043
+   - 7072:7070
+  expose:
+   - 9043
+   - 7000
+   - 7001
+   - 7199
+   - 9142
+   - 9160
+  security_opt:
+   - seccomp:unconfined
+  ulimits:
+   memlock: -1
+   nproc: 32768
+   nofile: 100000
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+  volumes:
+   - /home/public/elastic-similarity/cassandra2:/var/lib/cassandra
+  logging:
+   <<: *rotate_logging
+  depends_on:
+   - cassandra
+ node3:
+  restart: always
+  container_name: cassandra_node3
+  hostname: node3
+  profiles: ["cassandra_cluster"]
+  environment:
+   - CASSANDRA_SEEDS=cassandra,node3
+   - CASSANDRA_BROADCAST_ADDRESS=node3
+   - CASSANDRA_NATIVE_TRANSPORT_PORT=9044
+   - CASSANDRA_CLUSTER_NAME=gsi-cluster
+   - CASSANDRA_START_RPC=false
+   - CASSANDRA_DC=DC1
+   - CASSANDRA_RACK=RAC2
+   - CASSANDRA_NUM_TOKENS=256
+   - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+  ports:
+   - 9044:9044
+   - 7073:7070
+  expose:
+   - 9044
+   - 7000
+   - 7001
+   - 7199
+   - 9142
+   - 9160
+  security_opt:
+   - seccomp:unconfined
+  ulimits:
+   memlock: -1
+   nproc: 32768
+   nofile: 100000
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+  volumes:
+   - /home/public/elastic-similarity/cassandra3:/var/lib/cassandra
+  logging:
+   <<: *rotate_logging
+  depends_on:
+   - cassandra
+ node4:
+  restart: always
+  container_name: cassandra_node4
+  hostname: node4
+  profiles: ["cassandra_cluster"]
+  environment:
+   - CASSANDRA_SEEDS=cassandra,node3
+   - CASSANDRA_BROADCAST_ADDRESS=node4
+   - CASSANDRA_NATIVE_TRANSPORT_PORT=9045
+   - CASSANDRA_CLUSTER_NAME=gsi-cluster
+   - CASSANDRA_START_RPC=false
+   - CASSANDRA_DC=DC1
+   - CASSANDRA_RACK=RAC2
+   - CASSANDRA_NUM_TOKENS=256
+   - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+  ports:
+   - 9045:9045
+   - 7074:7070
+  expose:
+   - 9045
+   - 7000
+   - 7001
+   - 7199
+   - 9142
+   - 9160
+  security_opt:
+   - seccomp:unconfined
+  ulimits:
+   memlock: -1
+   nproc: 32768
+   nofile: 100000
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+  volumes:
+   - /home/public/elastic-similarity/cassandra4:/var/lib/cassandra
+  logging:
+   <<: *rotate_logging
+  depends_on:
+   - cassandra
+ node5:
+  restart: always
+  container_name: cassandra_node5
+  hostname: node5
+  profiles: ["cassandra_cluster"]
+  environment:
+   - CASSANDRA_SEEDS=cassandra,node5
+   - CASSANDRA_BROADCAST_ADDRESS=node5
+   - CASSANDRA_NATIVE_TRANSPORT_PORT=9046
+   - CASSANDRA_CLUSTER_NAME=gsi-cluster
+   - CASSANDRA_START_RPC=false
+   - CASSANDRA_DC=DC1
+   - CASSANDRA_RACK=RAC3
+   - CASSANDRA_NUM_TOKENS=256
+   - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+  ports:
+   - 9046:9046
+   - 7075:7070
+  expose:
+   - 9046
+   - 7000
+   - 7001
+   - 7199
+   - 9142
+   - 9160
+  security_opt:
+   - seccomp:unconfined
+  ulimits:
+   memlock: -1
+   nproc: 32768
+   nofile: 100000
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+  volumes:
+   - /home/public/elastic-similarity/cassandra5:/var/lib/cassandra
+  logging:
+   <<: *rotate_logging
+  depends_on:
+   - cassandra
+ node6:
+  restart: always
+  container_name: cassandra_node6
+  hostname: node6
+  profiles: ["cassandra_cluster"]
+  environment:
+   - CASSANDRA_SEEDS=cassandra,node5
+   - CASSANDRA_BROADCAST_ADDRESS=node6
+   - CASSANDRA_NATIVE_TRANSPORT_PORT=9047
+   - CASSANDRA_CLUSTER_NAME=gsi-cluster
+   - CASSANDRA_START_RPC=false
+   - CASSANDRA_DC=DC1
+   - CASSANDRA_RACK=RAC3
+   - CASSANDRA_NUM_TOKENS=256
+   - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+  ports:
+   - 9047:9047
+   - 7076:7070
+  expose:
+   - 9047
+   - 7000
+   - 7001
+   - 7199
+   - 9142
+   - 9160
+  security_opt:
+   - seccomp:unconfined
+  ulimits:
+   memlock: -1
+   nproc: 32768
+   nofile: 100000
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/cassandra:${DOCKER_VERSION:-latest}
+  volumes:
+   - /home/public/elastic-similarity/cassandra6:/var/lib/cassandra
+  logging:
+   <<: *rotate_logging
+  depends_on:
+   - cassandra

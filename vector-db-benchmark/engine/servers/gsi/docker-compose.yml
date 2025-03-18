@@ -1,0 +1,7 @@
+services:
+  fake-fvs:
+    image: fake-fvs:latest
+    ports:
+      - "7762:7762"
+    expose:
+      - "7762"

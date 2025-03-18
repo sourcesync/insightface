@@ -1,0 +1,13 @@
+.idea/
+.pytest_cache/
+.vscode
+__pycache__
+*.pyc
+NOTES.md
+
+results/*
+myIndex.bin
+.DS_Store
+data
+results.*
+.ipynb_checkpoints

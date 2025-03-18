@@ -1,0 +1,207 @@
+version: '3.4'
+x-logging:
+  logging: &rotate_logging
+    driver: "json-file"
+    options:
+      max-file: "10"
+      max-size: "10m"
+x-common-env:
+  environment: &common_env
+    FLOAT_API_HOST: python-float32-neural
+    CONVERT_PYTHON_HOST: dataset-converter
+    INDEX_MANAGER_HOST: index-manager
+    DATAMANAGER_HOST: dataset-manager
+    SEARCH_HOST: search
+    SETTINGS_HOST: settings-manager
+    KAFKA_HOST: broker
+    REDIS_HOST: redis
+    POSTGRES_HOST: postgresql
+    CASSANDRA_POINTS: cassandra
+    JOB_MANAGER_HOST: job-manager
+    PLUGIN_GW_HOST: plugin-gateway
+    PLUGIN_WEB_GW_HOST: web-gateway
+    DATAMANAGER_FILES_PATH: ${DATA_MANAGER_PATH:-/home/public/elastic-similarity/data}
+    LocalFS: ${FS_UPLOAD_DIR:-/home/public/elastic-similarity/upload_store}
+x-server-volumes:
+  volumes: &server_volumes
+    type: bind
+    source: ${ROOT_SHARED:-/home/public/elastic-similarity/data}
+    target: ${ROOT_SHARED:-/home/public/elastic-similarity/data}
+services:
+ index-manager:
+  container_name: index-manager
+  environment:
+    <<: *common_env
+  volumes:
+   - <<: *server_volumes
+   - /home/public/elastic-similarity/float32_neural:/home/public/elastic-similarity/float32_neural
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+    - settings-manager
+    - dataset-manager
+      #    - python-float32-neural
+  ports:
+   - 8185:8185
+  expose:
+   - 8185
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/index-manager:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ dataset-manager:
+  privileged: true
+  container_name: dataset-manager
+  environment:
+    #    JAVA_OPTS="-Xms16G -Xmx32G"
+    <<: *common_env
+    CASSANDRA_POINTS: cassandra
+    CASSANDRA_PORT: 9042
+    REMOVE_UNALLOC_DATA: "True"
+  volumes:
+   - <<: *server_volumes
+   - /home/public/elastic-similarity/float32_neural:/home/public/elastic-similarity/float32_neural
+   - ${FS_UPLOAD_DIR:-/home/public/elastic-similarity/upload_store}:${FS_UPLOAD_DIR:-/home/public/elastic-similarity/upload_store}
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+    - settings-manager
+      #    - python-float32-neural
+    - cassandra
+    - dataset-converter
+  ports:
+   - 8085:8085
+  expose:
+   - 8085
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/dataset-manager:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ plugin-gateway:
+  container_name: plugin-gateway
+  environment:
+    <<: *common_env
+  volumes:
+   - <<: *server_volumes
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+    - dataset-manager
+    - settings-manager
+    - search
+    - index-manager
+  ports:
+   - 8181:8181
+   - 7001:7001
+  expose:
+   - 8181
+   - 7001
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/plugin-gateway:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ web-gateway:
+  container_name: web-gateway
+  environment:
+    <<: *common_env
+  volumes:
+   - <<: *server_volumes
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+    - dataset-manager
+    - settings-manager
+    - search
+    - index-manager
+  ports:
+   - 8182:8182
+  expose:
+   - 8182
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/web-gateway:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ search:
+  container_name: search
+  environment:
+    <<: *common_env
+    FLOAT_TCP_HOST: $FLOAT_TCP_HOST
+    GSI_LOG_LEVEL: INFO
+  volumes:
+   - <<: *server_volumes
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+    - settings-manager
+      #    - python-float32-neural
+  ports:
+   - 8081:8081
+   - 7005:7005
+  expose:
+   - 7005
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/search:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ settings-manager:
+  container_name: settings-manager
+  environment:
+    <<: *common_env
+  volumes:
+   - <<: *server_volumes
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+  ports:
+   - 8087:8087
+  expose:
+   - 8087
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/settings-manager:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging
+ job-manager:
+  container_name: job-manager
+  environment:
+    <<: *common_env
+  volumes:
+   - <<: *server_volumes
+   - /home/public/elastic-similarity/float32_neural:/home/public/elastic-similarity/float32_neural
+   - ${FS_UPLOAD_DIR:-/home/public/elastic-similarity/upload_store}:${FS_UPLOAD_DIR:-/home/public/elastic-similarity/upload_store}
+  depends_on:
+    - postgresql
+    - broker
+    - redis
+    - settings-manager
+    - dataset-manager
+      #    - python-float32-neural
+    - dataset-converter
+  ports:
+   - 8186:8186
+   - 8183:8183
+  expose:
+   - 8186
+  tty: true
+  networks:
+   - elastic-similarity
+  image: ${DOCKER_REGISTRY}com/gsi/apu/elastic-similarity/job-manager:${DOCKER_VERSION:-latest}
+  logging:
+    <<: *rotate_logging

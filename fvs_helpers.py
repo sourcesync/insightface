@@ -62,6 +62,16 @@ def configure(host="localhost", port=7760, alloc="fvs-automation"):
 
     return api_config
 
+def dataset_list(api_config, verbose=False):
+    datasets_apis = swagger_client.DatasetsApi(api_config)
+    utilities_apis = swagger_client.UtilitiesApi(api_config)
+    alloc = api_config.default_headers["allocationToken"]
+    vprint("getting dataset list with alloc:", alloc)
+    dataset_list = datasets_apis.controllers_dataset_controller_get_datasets_list(api_config.default_headers["allocationToken"])
+    vprint('total count:', len(dataset_list.datasets_list))
+    vprint("dataset list:", dataset_list.datasets_list)
+    return dataset_list.datasets_list
+
 def cleanup(api_config, verbose=False):
     datasets_apis = swagger_client.DatasetsApi(api_config)
     utilities_apis = swagger_client.UtilitiesApi(api_config)
